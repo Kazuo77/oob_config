@@ -28,6 +28,7 @@ class Device(object):
     def __init__(self,
                  hostname,ip_address,newip_address,model,mac_address):#firmware,tsid,serialnumber,crestron_dev_id,comment
         self.def_username = str('crestron')
+        self.username = str('admin')
         self.def_password = str('')
         self.password = str('Anuvision123!')
         self.model = str(model)
@@ -77,7 +78,7 @@ class Device(object):
 
     def ssession_send(self,cmd):
         self.session.send(f'{cmd}\n')
-        time.sleep(1)
+        time.sleep(.3)
         if self.session.recv_ready():
             response = self.session.recv(16384).decode('utf-8')
             print(response)
@@ -98,11 +99,11 @@ class Device(object):
             self.session.get_pty()
             self.session.invoke_shell()
 
-            self.ssh
             start = time.time()
             while time.time() - start < 6:
                 if self.session.recv_ready():
                     response = self.session.recv(16384).decode('utf-8')
+                    self.session.send('\n')
 
                     sys.stdout.write(response)
                     sys.stdout.flush()
@@ -114,15 +115,15 @@ class Device(object):
                     newAccountSuccess = response.find('An administrator account was successfully created.')
 
                     if pass_find != -1:
-                        self.session.send(self.password + '\n')
+                        self.ssession_send(self.password)
                         time.sleep(.5)
-                        self.session.send(self.password + '\n')
+                        self.ssession_send(self.password)
                     if oob_find != -1:
-                        self.session.send(self.username + '\n')
+                        self.ssession_send(self.username)
                         time.sleep(.5)
-                        self.session.send(self.password + '\n')
+                        self.ssession_send(self.password)
                         time.sleep(.5)
-                        self.session.send(self.password + '\n')
+                        self.ssession_send(self.password)
 
         finally:
             self.session.close()
@@ -160,9 +161,9 @@ class Device(object):
 
 
     def crestron_device_config(self):
-        ##self.crestron_oob_init()
+        self.crestron_oob_init()
         ##time.sleep(2)
-        self.crestron_ip_config()
+        # self.crestron_ip_config()
 
 #--------------------------------SSH_Cmd----------------------------------------
     def ssh_cmd(self, cmd):
