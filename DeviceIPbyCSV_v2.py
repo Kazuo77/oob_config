@@ -1,6 +1,10 @@
 import paramiko
 import time
 import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+from pprint import pprint as pprint
+
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,13 +15,6 @@ pd.options.display.max_columns= None
 pd.set_option('display.max_rows', 3000)
 pd.set_option('display.max_columns', 3000)
 
-from pprint import pprint as pprint
-
-import tkinter as tk
-from tkinter import filedialog
-
-
-
 #create a list to hold threads
 threads = []
 MyDevice = []
@@ -26,22 +23,17 @@ MyDevice = []
 
 class Device(object):
     def __init__(self,
-                 hostname,ip_address,newip_address,model,mac_address,ipid,controllerip):#firmware,tsid,serialnumber,crestron_dev_id,comment,
+                 hostname,ip_address,newip_address,model,mac_address):#firmware,tsid,serialnumber,crestron_dev_id,comment
         self.def_username = str('crestron')
-        self.def_password = str('')
         self.username = str('admin')
-        # self.password = str('Anuvision123!')
-        self.password = str('crestr0n')
-        self.controllerip = str(controllerip)
+        self.def_password = str('')
+        self.password = str('Anuvision123!')
         self.model = str(model)
-        self.ipid = str(ipid)
         self.hostname = str(hostname)
         self.ip_address = str(ip_address)
         self.new_ip_address = str(newip_address)
-        self.dns_address1 = str('10.0.25.21')
-        self.dns_address2 = str('10.0.25.22')
-        self.new_subnet = str('255.255.255.0')
-        self.new_router = str('10.2.82.1')
+        self.new_subnet = str('255.255.0.0')
+        self.new_router = str('172.22.0.1')
         self.dhcp_status = str('off')
         self.mac_address = str(mac_address)
         self.tn = None
@@ -67,12 +59,13 @@ class Device(object):
             #-----finished session lines
             self.channel = self.ssh.invoke_shell()
             time.sleep(5)
-            #-----Session Receive---------
+            #-----Session Recieve---------
             if self.session.recv_ready():
                 output = self.session.recv(65535).decode('utf-8')
 
                 print(output)
-            #------Session end Receive
+            #------Session end recieve
+
             ##------------------Added for Initialization feedback------------
             # self.ssh.exec_command('')
         except Exception as e:
@@ -81,25 +74,21 @@ class Device(object):
 
 
     def ssession_send(self,cmd):
-        self.session.send(f'{cmd}\r\n')
-        # time.sleep(.1)
-        # if self.session.recv_ready():
-        #     response = self.session.recv(16384).decode('utf-8')
-        #     print(response)
+        self.session.send(f'{cmd}\n')
+        time.sleep(.3)
+        if self.session.recv_ready():
+            response = self.session.recv(16384).decode('utf-8')
+            print(response)
 
 
 
 #-------------------------------Out of Box Initialize------------------------------------------------------
     #-----------------------------------------------------------------------------------------------
 
-    def crestron_oob_init(self): #This needs to get fixed, not working as of 5/20/2025
-
-        #### version - Claude Fixes
-
+    def crestron_oob_init(self):
         self.ssh = paramiko.SSHClient()
         self.ssh.load_system_host_keys()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy)
         try:
             print("connecting to device")
             self.ssh.connect(self.ip_address, 22, self.def_username, self.def_password)
@@ -109,111 +98,46 @@ class Device(object):
 
             start = time.time()
             while time.time() - start < 6:
-                self.session.send('\n')   # send device a return because it doesn't respond when the shell opens
                 if self.session.recv_ready():
-
                     response = self.session.recv(16384).decode('utf-8')
+                    self.session.send('\n')
 
-
-                    # Display the output (choose one method)
                     sys.stdout.write(response)
                     sys.stdout.flush()
-                    print('sending configurations')
+                    #print(response)
                     pass_find = response.find('Please create a new password:')
                     oob_find = response.find('Please create a local administrator account')
                     newAccountUser_find = response.find('Username:')
                     newAccountPass_find =  response.find('Password:')
                     newAccountSuccess = response.find('An administrator account was successfully created.')
 
-
                     if pass_find != -1:
-                        print('password input + \n')
                         self.ssession_send(self.password)
                         time.sleep(.5)
                         self.ssession_send(self.password)
-                    elif oob_find != -1:
-                        print('account created + \n')
+                    if oob_find != -1:
                         self.ssession_send(self.username)
                         time.sleep(.5)
                         self.ssession_send(self.password)
                         time.sleep(.5)
                         self.ssession_send(self.password)
 
-                    # Your interaction logic here...
-        except paramiko.AuthenticationException:
-            print("Authentication failed")
-        except paramiko.SSHException as e:
-            print(f"SSH connection error: {e}")
-        except Exception as e:
-            print(f"Connection failed: {e}")
         finally:
-            if hasattr(self, 'session') and self.session:
-                self.session.close()
-            if self.ssh:
-                self.ssh.close()
-
-        ################# - Not working 05-28-2025- ################### - I think its the way i Changed the ssh_cmd function
-        # self.ssh = paramiko.SSHClient()
-        # self.ssh.load_system_host_keys()
-        # self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        # try:
-        #     print("connecting to device")
-        #     self.ssh.connect(self.ip_address, 22, self.def_username, self.def_password)
-        #     self.session = self.ssh.get_transport().open_session()
-        #     self.session.get_pty()
-        #     self.session.invoke_shell()
-        #
-        #     start = time.time()
-        #     while time.time() - start < 6:
-        #         if self.session.recv_ready():
-        #             response = self.session.recv(16384).decode('utf-8')
-        #
-        #
-        #             sys.stdout.write(response)
-        #             sys.stdout.flush()
-        #
-        #             print(response)
-        #             pass_find = response.find('Please create a new password:')
-        #             oob_find = response.find('Please create a local administrator account')
-        #             newAccountUser_find = response.find('Username:')
-        #             newAccountPass_find =  response.find('Password:')
-        #             newAccountSuccess = response.find('An administrator account was successfully created.')
-        #
-        #
-        #             if pass_find != -1:
-        #                 print('password input')
-        #                 self.ssession_send(self.password)
-        #                 time.sleep(.5)
-        #                 self.ssession_send(self.password)
-        #             elif oob_find != -1:
-        #                 print('account created')
-        #                 self.ssession_send(self.username)
-        #                 time.sleep(.5)
-        #                 self.ssession_send(self.password)
-        #                 time.sleep(.5)
-        #                 self.ssession_send(self.password)
-        #
-        # finally:
-        #     self.session.close()
-        #     print('closed')
+            self.session.close()
+            print('')
 
 
-    def crestron_ip_config(self):#This Works and was tested with MPC3-302's on 5/20/2025
+    def crestron_ip_config(self):
         try:
             self.ssh_connect()
             time.sleep(.5)
 
-            # Set Network Config Fields
-            # pprint(self.ssh_cmd(f'ipt -c')) #clear current ip table
-            pprint(self.ssh_cmd(f'ipa 0 {self.new_ip_address}'))
-            pprint(self.ssh_cmd(f'ipm 0 {self.new_subnet}'))
-            pprint(self.ssh_cmd(f'defr 0 {self.new_router}'))
-            pprint(self.ssh_cmd(f'dhcp 0 {self.dhcp_status}'))
+    #   Set Network Config Fields
+    #        pprint(self.ssh_cmd(f'ipa 0 {self.new_ip_address}'))
+    #        pprint(self.ssh_cmd(f'ipm 0 {self.new_subnet}'))
+    #        pprint(self.ssh_cmd(f'defr 0 {self.new_router}'))
+    #        pprint(self.ssh_cmd(f'dhcp 0 {self.dhcp_status}'))
             pprint(self.ssh_cmd(f'hostname {self.hostname}'))
-            pprint(self.ssh_cmd(f'PWDRECOVERMODE ON')) # enables password recovery by holding down the HW button
-
-            # pprint(self.ssh_cmd(f'addm {self.ipid} 172.22.0.1')) # for slave devices
-
 
             time.sleep(3)
 
@@ -224,19 +148,19 @@ class Device(object):
         except Exception as e:
            print(e)
 
-        # # Explicitly close SSH session
+    #    # # Explicitly close SSH session
         finally:
             self.ssh_close()
             print()
 
-#--------------------------------Combine functions for threading and can we do this with async. -- ADD AND REMOVE CONFIG FUNCTIONS HERE
+
+#--------------------------------Combine functions for threading. -- ADD AND REMOVE CONFIG FUNCTIONS HERE
 
 
     def crestron_device_config(self):
-        # self.test()
-        # self.crestron_oob_init()
+        self.crestron_oob_init()
         ##time.sleep(2)
-        self.crestron_ip_config()
+        # self.crestron_ip_config()
 
 #--------------------------------SSH_Cmd----------------------------------------
     def ssh_cmd(self, cmd):
@@ -291,6 +215,31 @@ class Device(object):
 
         print(f"Disconnected from {self.hostname}")
 
+    def test(self):
+        self.ssh = paramiko.SSHClient()
+        self.ssh.load_system_host_keys()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy)
+        try:
+            print("connecting to device")
+            self.ssh.connect(self.ip_address, 22, self.username, self.password)
+            self.session = self.ssh.get_transport().open_session()
+            self.session.get_pty()
+            self.session.invoke_shell()
+
+            start = time.time()
+            while time.time() - start < 6:
+                if self.session.recv_ready():
+                    response = self.session.recv(16384).decode('utf-8')
+
+                    sys.stdout.write(response)
+                    sys.stdout.flush()
+
+                    self.session.send('version' + '\n')
+
+        finally:
+            self.session.close()
+            print('')
+
 
 #------------------Clear SSH on list?-------------------------------------------------------
 
@@ -299,7 +248,7 @@ class Device(object):
 
 file_path = filedialog.askopenfilename()
 
-# file_path = ('crestron_test.csv')
+#file_path = ('crestron_test.csv')
 
 
 # -------- Strip spaces out of CSV files Pandas -----------####################
@@ -311,7 +260,7 @@ def trim(dataset):
     return dataset.applymap(trim)
 
 
-device_fields = ['Hostname','IP Address','NewIP Address','Model Name','Firmware','TSID','MAC Address','SerialNumber','Crestron Dev ID','Comment','IPID','ControllerIP']
+device_fields = ['Hostname','IP Address','NewIP Address','Model Name','Firmware','TSID','MAC Address','SerialNumber','Crestron Dev ID','Comment']
 df = trim(pd.read_csv(file_path, skip_blank_lines=True))
 df.columns = df.columns.str.strip()         #Clear whitespace on data in columns
 device_df = df[device_fields]
@@ -322,7 +271,7 @@ device_df = df[device_fields]
 for device in device_df.index:
     devices = Device(device_df.at[device,'Hostname'], device_df.at[device,'IP Address'],
                             device_df.at[device,'NewIP Address'], device_df.at[device,'Model Name'],
-                            device_df.at[device,'MAC Address'],device_df.at[device,'IPID'],device_df.at[device,'ControllerIP'])
+                            device_df.at[device,'MAC Address'])
 
     MyDevice.append(devices) #append objects to list
 
@@ -333,9 +282,3 @@ for device in device_df.index:
     # Combines both initial config and IP config
     # # Sets static Ip from device summary List. - need to add NewIP Address column after export from toolbox. 'Hostname','IP Address','NewIP Address','Model Name','Firmware','TSID','MAC Address','SerialNumber','Crestron Dev ID','Comment'
     devices.crestron_device_config()
-
-
-
-
-
-
