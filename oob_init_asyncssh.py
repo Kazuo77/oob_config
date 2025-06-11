@@ -5,6 +5,8 @@ import pandas as pd
 import sys
 from tkinter import filedialog
 
+from sftptransfer import sftp_transfer
+
 ##pandas config
 pd.options.display.width= None
 pd.options.display.max_columns= None
@@ -13,8 +15,10 @@ pd.set_option('display.max_columns', 3000)
 
 
 MyDevice = []
-# file_path = filedialog.askopenfilename()
-file_path = ('devices.txt')
+file_path = filedialog.askopenfilename()
+firmware_path = filedialog.askopenfilename()
+program_path = filedialog.askopenfilename()
+# file_path = ('devices.txt')
 
 def pandas_to_device_list(df, host_column='host'):
     """Convert pandas DataFrame to device list for AsyncSSH"""
@@ -65,12 +69,29 @@ async def run_commands_with_variables(device_info, commands, username, password)
                     'stderr': result.stderr,
                     'success': result.exit_status == 0
                 })
+            print('transfering files')
 
+            transfer_task = asyncio.create_task(
+            sftp_transfer(conn=conn, local_file=firmware_path, remote_file='./firmware', direction='upload')
+            )
+            transfer_task2 = asyncio.create_task(
+                sftp_transfer(conn=conn, local_file=program_path, remote_file='./program03', direction='upload')
+            )
+            try:
+                # await transfer_task
+                await asyncio.gather(transfer_task, transfer_task2)
+                print(f'{host} - Transfers completed successfully!')
+            except Exception as e:
+                print(f'{host} - Transfer failed: {e}')
             return {
                 'host': host,
                 'results': results,
                 'success': True
             }
+
+
+
+
 
     except Exception as e:
         return {

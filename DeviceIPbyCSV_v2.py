@@ -4,11 +4,14 @@ import pandas as pd
 import tkinter as tk
 from tkinter import filedialog
 from pprint import pprint as pprint
+import sftptransfer
+
 
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from sftptransfer import sftp_transfer
 
 pd.options.display.width= None
 pd.options.display.max_columns= None
@@ -140,6 +143,8 @@ class Device(object):
             pprint(self.ssh_cmd(f'hostname {self.hostname}'))
 
             time.sleep(3)
+
+            sftp_transfer()
 
             pprint(self.ssh_cmd(f'reboot'))
             self.ssh_cmd('bye')
