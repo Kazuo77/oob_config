@@ -123,6 +123,11 @@ async def main():
     # Your command templates
     command_templates = [
         'version',
+        'ipa 0 {NewIP Address}',
+        'ipm 0 ',
+        'dhcp',
+
+
     ]
     # for device in devices:
     #     print(device['host'])
@@ -142,7 +147,7 @@ async def main():
         if result['success']:
             print(f"\n{result['host']} - Success!")
             for cmd in result['results']:
-                print(f"\n{result['host']} - {cmd['stdout']}")
+                print(f"\n{result['host']} - {cmd['stdout']}", flush=True)
                 if not cmd['success']:
                     print(f"  Failed: {cmd['command']}")
         else:
