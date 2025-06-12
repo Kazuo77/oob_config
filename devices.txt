@@ -1,3 +1,3 @@
 Hostname         ,  IP Address  ,NewIP Address,  Model Name  ,  Firmware            ,  TSID      ,  MAC Address        ,  SerialNumber  ,  Crestron Dev ID  ,  Comment, IPID,ControllerIP
 
-TSW-1070-C442681CDF9D  ,10.0.0.125 , 10.0.0.125  ,  RMC4    ,  v1.8001.5362.34773  ,  9AF20D76  ,  c4.42.68.59.7c.23  ,  2414JBH03446  ,  E-c44268597c23   ,,,
+TSW-1070-C442681CDF9D  ,10.0.0.125 , 10.0.0.126  ,  RMC4    ,  v1.8001.5362.34773  ,  9AF20D76  ,  c4.42.68.59.7c.23  ,  2414JBH03446  ,  E-c44268597c23   ,,,

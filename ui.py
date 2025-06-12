@@ -4,80 +4,41 @@ import pandas as pd
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QPushButton, QTextEdit, QLineEdit, QLabel,
                              QFileDialog, QProgressBar, QTabWidget, QFormLayout,
-                             QCheckBox, QSpinBox, QGroupBox, QSplitter)
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+                             QCheckBox, QSpinBox, QGroupBox, QSplitter
+                             )
+from PyQt5.QtCore import pyqtSignal, Qt, QObject
 from PyQt5.QtGui import QFont, QTextCursor
 import qasync
+from sshoperations import run_commands_with_variables
 
+def trim(dataset):
+    return dataset.map(lambda x: x.strip() if isinstance(x, str) else x)
 
-# Your existing imports would go here
-# from sftptransfer import sftp_transfer
-# from your_ssh_module import run_commands_with_variables, pandas_to_device_list
-
-
-class SSHWorker(QThread):
-    """Worker thread for SSH operations to prevent UI freezing"""
+class SSHSignals(QObject):
+    """Signals for async SSH operations"""
     progress_update = pyqtSignal(str)  # For progress messages
     device_completed = pyqtSignal(str, bool)  # hostname, success
     command_output = pyqtSignal(str, str, str)  # hostname, command, output
     finished_all = pyqtSignal()
-
-    def __init__(self, devices, commands, username, password, firmware_config=None, program_config=None):
-        super().__init__()
-        self.devices = devices
-        self.commands = commands
-        self.username = username
-        self.password = password
-        self.firmware_config = firmware_config or {}
-        self.program_config = program_config or {}
-        self.is_cancelled = False
-
-    def cancel(self):
-        self.is_cancelled = True
-
-    def run(self):
-        """Run the SSH operations in background thread"""
-        # This would integrate with your existing async functions
-        # For now, simulating the process
-
-        for i, device in enumerate(self.devices):
-            if self.is_cancelled:
-                break
-
-            hostname = device.get('host', f'Device {i + 1}')
-            self.progress_update.emit(f"Connecting to {hostname}...")
-
-            # Simulate SSH operations
-            self.msleep(1000)  # Simulate connection time
-
-            if not self.is_cancelled:
-                # Simulate command execution
-                for cmd in self.commands:
-                    if self.is_cancelled:
-                        break
-                    self.command_output.emit(hostname, cmd, f"Output from {cmd} on {hostname}")
-                    self.msleep(500)
-
-                # Simulate file transfers
-                if self.firmware_config.get('enabled'):
-                    self.progress_update.emit(f"Transferring firmware to {hostname}...")
-                    self.msleep(2000)
-
-                if self.program_config.get('enabled'):
-                    self.progress_update.emit(f"Transferring program to {hostname}...")
-                    self.msleep(2000)
-
-                self.device_completed.emit(hostname, True)
-
-        self.finished_all.emit()
+    device_started = pyqtSignal(str)  # hostname
 
 
 class SSHManagerUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.devices = []
-        self.worker = None
+        self.current_task = None
+        self.signals = SSHSignals()
         self.setup_ui()
+        self.connect_signals()
+
+    def connect_signals(self):
+        """Connect async signals to UI updates"""
+        self.signals.progress_update.connect(self.update_progress)
+        self.signals.device_completed.connect(self.device_completed)
+        self.signals.command_output.connect(self.command_output)
+        self.signals.finished_all.connect(self.execution_finished)
+        self.signals.device_started.connect(self.device_started)
 
     def setup_ui(self):
         self.setWindowTitle("SSH/SFTP Device Manager")
@@ -168,8 +129,8 @@ class SSHManagerUI(QMainWindow):
         firmware_layout = QFormLayout(firmware_group)
 
         self.enable_firmware = QCheckBox("Transfer firmware")
-        self.firmware_local_edit = QLineEdit("./firmware.puf")
-        self.firmware_remote_edit = QLineEdit("./firmware")
+        self.firmware_local_edit = QLineEdit("./firmware.bin")
+        self.firmware_remote_edit = QLineEdit("./ftp/firmware/")
 
         firmware_browse_btn = QPushButton("Browse")
         firmware_browse_btn.clicked.connect(lambda: self.browse_file(self.firmware_local_edit))
@@ -189,8 +150,8 @@ class SSHManagerUI(QMainWindow):
         program_layout = QFormLayout(program_group)
 
         self.enable_program = QCheckBox("Transfer program")
-        self.program_local_edit = QLineEdit("./program.lpz")
-        self.program_remote_edit = QLineEdit("./program01")
+        self.program_local_edit = QLineEdit("./program.zip")
+        self.program_remote_edit = QLineEdit("./nvram/")
 
         program_browse_btn = QPushButton("Browse")
         program_browse_btn.clicked.connect(lambda: self.browse_file(self.program_local_edit))
@@ -221,8 +182,13 @@ class SSHManagerUI(QMainWindow):
 
         # Load devices button
         load_btn = QPushButton("Load Devices")
+        print(f"Button type: {type(load_btn)}")
+        print(f"Has clicked attribute: {hasattr(load_btn, 'clicked')}")
+        print(f"Clicked type: {type(load_btn.clicked) if hasattr(load_btn, 'clicked') else 'No clicked'}")
         load_btn.clicked.connect(self.load_devices)
         layout.addWidget(load_btn)
+
+
 
         # Device count label
         self.device_count_label = QLabel("No devices loaded")
@@ -330,6 +296,7 @@ class SSHManagerUI(QMainWindow):
 
     def load_devices(self):
         """Load devices from the selected file"""
+        print('load_device_function')
         file_path = self.file_path_edit.text()
         if not file_path:
             self.status_label.setText("Please select a device file first")
@@ -337,25 +304,28 @@ class SSHManagerUI(QMainWindow):
 
         try:
             # Load the file
-            if file_path.endswith('.csv'):
+            print('loading file')
+            # Fix: .endswith() takes a tuple for multiple extensions
+            if file_path.endswith(('.csv', '.txt')):
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_csv(file_path, delimiter='\t')  # Assume tab-delimited
 
-            # Clean data (your trim function)
-            df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+            # Clean data - Fix: you're reading the file twice, only need once
+            df = trim(df)  # Use the df you already loaded above
             df.columns = df.columns.str.strip()
 
-            # Convert to device list (your existing function would go here)
-            # For now, simulating
+            # Convert to device list
+            print('working on host column')
             host_column = self.host_column_edit.text()
             if host_column not in df.columns:
                 self.status_label.setText(f"Column '{host_column}' not found in file")
                 return
 
             self.devices = []
-            for _, row in df.iterrows():
-                host = row[host_column]
+            # Fix: syntax errors in the loop
+            for _, row in df.iterrows():  # underscore, not asterisk
+                host = row[host_column]  # underscore, not asterisk
                 variables = row.drop(host_column).to_dict()
                 self.devices.append({
                     'host': host,
@@ -371,9 +341,11 @@ class SSHManagerUI(QMainWindow):
 
         except Exception as e:
             self.status_label.setText(f"Error loading file: {str(e)}")
+            print(f"Error: {e}")  # This will help you see what went wrong
 
-    def start_execution(self):
-        """Start the SSH execution process"""
+    @qasync.asyncSlot()
+    async def start_execution(self):
+        """Start the SSH execution process using pure asyncio"""
         if not self.devices:
             self.status_label.setText("No devices loaded")
             return
@@ -415,24 +387,95 @@ class SSHManagerUI(QMainWindow):
             'remote_path': self.program_remote_edit.text()
         }
 
-        # Start worker thread
-        self.worker = SSHWorker(
-            self.devices, commands, username, password,
-            firmware_config, program_config
+        # Start async execution
+        self.current_task = asyncio.create_task(
+            self.run_ssh_batch(self.devices, commands, username, password,
+                               firmware_config, program_config)
         )
-        self.worker.progress_update.connect(self.update_progress)
-        self.worker.device_completed.connect(self.device_completed)
-        self.worker.command_output.connect(self.command_output)
-        self.worker.finished_all.connect(self.execution_finished)
-        self.worker.start()
 
         self.status_label.setText("Execution started...")
 
+    async def run_ssh_batch(self, devices, commands, username, password,
+                            firmware_config, program_config):
+        """Run SSH operations on all devices concurrently"""
+        max_concurrent = self.max_concurrent.value()
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def process_single_device(device):
+            async with semaphore:
+                return await self.process_device(device, commands, username, password,
+                                                 firmware_config, program_config)
+
+        # Create tasks for all devices
+        tasks = [process_single_device(device) for device in devices]
+
+        # Run all devices concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process final results
+        self.signals.finished_all.emit()
+        return results
+
+    async def process_device(self, device_info, commands, username, password,
+                             firmware_config, program_config):
+        """Process a single device - replace this with your actual SSH function"""
+        hostname = device_info['host']
+        variables = device_info.get('variables', {})
+
+        try:
+            self.signals.device_started.emit(hostname)
+            self.signals.progress_update.emit(f"Connecting to {hostname}...")
+
+            # This is where you'd call your actual function:
+            result = await run_commands_with_variables(device_info, commands, username, password)
+
+            # Simulate for now
+            await asyncio.sleep(1)  # Simulate connection
+
+            # Process each command template with variables
+            for command_template in commands:
+                # Format command with device-specific variables (same as your existing code)
+                try:
+                    formatted_command = command_template.format(**variables)
+                except KeyError as e:
+                    # Handle missing variables gracefully
+                    formatted_command = command_template
+                    self.signals.progress_update.emit(f"Warning: Variable {e} not found for {hostname}")
+
+                self.signals.progress_update.emit(f"Running '{formatted_command}' on {hostname}")
+                await asyncio.sleep(0.5)  # Simulate command execution
+
+                # Simulate command output
+                output = f"Simulated output from '{formatted_command}' on {hostname}"
+                self.signals.command_output.emit(hostname, formatted_command, output)
+
+            # Simulate file transfers
+            if firmware_config.get('enabled'):
+                self.signals.progress_update.emit(f"Transferring firmware to {hostname}...")
+                await asyncio.sleep(2)  # Simulate transfer
+
+            if program_config.get('enabled'):
+                self.signals.progress_update.emit(f"Transferring program to {hostname}...")
+                await asyncio.sleep(2)  # Simulate transfer
+
+            self.signals.device_completed.emit(hostname, True)
+            return {'host': hostname, 'success': True}
+
+        except Exception as e:
+            self.signals.device_completed.emit(hostname, False)
+            self.signals.progress_update.emit(f"ERROR on {hostname}: {str(e)}")
+            return {'host': hostname, 'success': False, 'error': str(e)}
+
     def cancel_execution(self):
         """Cancel the current execution"""
-        if self.worker:
-            self.worker.cancel()
+        if self.current_task:
+            self.current_task.cancel()
             self.status_label.setText("Cancelling...")
+
+    def device_started(self, hostname):
+        """Handle device start"""
+        self.output_text.append(f"[STARTED] {hostname}")
+        self.output_text.moveCursor(QTextCursor.End)
 
     def update_progress(self, message):
         """Update progress display"""
@@ -468,6 +511,7 @@ class SSHManagerUI(QMainWindow):
         self.cancel_btn.setEnabled(False)
         self.status_label.setText("Execution completed")
         self.output_text.append("[INFO] All devices processed")
+        self.current_task = None
 
     def export_results(self):
         """Export results to file"""
