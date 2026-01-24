@@ -1,0 +1,5 @@
+asyncssh
+paramiko
+pandas
+PyQt5
+qasync
