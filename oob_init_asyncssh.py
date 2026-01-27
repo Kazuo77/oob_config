@@ -103,7 +103,7 @@ def trim(dataset):
     return dataset.map(trim)
 
 
-async def async_oob_init(host, new_username, new_password, timeout=10):
+async def async_oob_init(host, new_username, new_password, timeout=30):
     """
     Async Out-of-Box initialization for Crestron devices.
     Connects with default credentials and sets up new admin account.
@@ -112,7 +112,7 @@ async def async_oob_init(host, new_username, new_password, timeout=10):
         host: IP address of the device
         new_username: Username for the new admin account
         new_password: Password for the new admin account
-        timeout: Maximum time to wait for prompts (default 10 seconds)
+        timeout: Maximum time to wait for prompts (default 30 seconds)
 
     Returns:
         dict with 'host', 'success', and 'message' keys
@@ -136,6 +136,9 @@ async def async_oob_init(host, new_username, new_password, timeout=10):
                 buffer = ''
                 start_time = asyncio.get_event_loop().time()
 
+                # State machine for prompts
+                state = 'waiting_username'
+
                 while (asyncio.get_event_loop().time() - start_time) < timeout:
                     try:
                         # Read with short timeout to allow checking for prompts
@@ -147,34 +150,32 @@ async def async_oob_init(host, new_username, new_password, timeout=10):
                             buffer += data
                             print(data, end='', flush=True)
 
-                            # Send newline to trigger prompts
-                            process.stdin.write('\n')
-
-                            # Check for password creation prompt
-                            if 'Please create a new password:' in buffer:
-                                await asyncio.sleep(0.5)
-                                process.stdin.write(f'{new_password}\n')
-                                await asyncio.sleep(0.5)
-                                process.stdin.write(f'{new_password}\n')
-                                buffer = ''
-
-                            # Check for admin account creation prompt
-                            if 'Please create a local administrator account' in buffer:
-                                await asyncio.sleep(0.5)
-                                process.stdin.write(f'{new_username}\n')
-                                await asyncio.sleep(0.5)
-                                process.stdin.write(f'{new_password}\n')
-                                await asyncio.sleep(0.5)
-                                process.stdin.write(f'{new_password}\n')
-                                buffer = ''
-
                             # Check for success message
-                            if 'An administrator account was successfully created' in buffer:
+                            if 'successfully created' in buffer.lower():
                                 return {
                                     'host': host,
                                     'success': True,
                                     'message': 'Administrator account created successfully'
                                 }
+
+                            # State machine to handle prompts in order
+                            if state == 'waiting_username' and 'Username:' in buffer:
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_username}\n')
+                                state = 'waiting_password'
+                                buffer = ''
+
+                            elif state == 'waiting_password' and 'Password:' in buffer:
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                state = 'waiting_verify'
+                                buffer = ''
+
+                            elif state == 'waiting_verify' and ('Verify' in buffer or 'Password:' in buffer):
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                state = 'waiting_success'
+                                buffer = ''
 
                     except asyncio.TimeoutError:
                         # No data available, continue waiting
@@ -183,7 +184,7 @@ async def async_oob_init(host, new_username, new_password, timeout=10):
                 return {
                     'host': host,
                     'success': False,
-                    'message': 'Timeout waiting for device prompts'
+                    'message': f'Timeout waiting for device prompts (state: {state})'
                 }
 
     except Exception as e:
