@@ -117,6 +117,12 @@ class SSHManagerUI(QMainWindow):
         oob_cred_layout.addRow("Username:", self.oob_username_edit)
         oob_cred_layout.addRow("Password:", self.oob_password_edit)
 
+        # Max concurrent connections
+        self.oob_max_concurrent = QSpinBox()
+        self.oob_max_concurrent.setRange(1, 50)
+        self.oob_max_concurrent.setValue(5)
+        oob_cred_layout.addRow("Max Concurrent:", self.oob_max_concurrent)
+
         layout.addWidget(oob_cred_group)
 
         # Init Button
@@ -217,12 +223,12 @@ class SSHManagerUI(QMainWindow):
         self.oob_progress_bar.setValue(0)
         self.oob_status_label.setText("Starting OOB initialization...")
 
-        self.oob_output_text.append(f"[INFO] Starting OOB init for {len(self.devices)} device(s) concurrently")
+        self.oob_output_text.append(f"[INFO] Starting OOB init for {len(self.devices)} device(s) ({self.oob_max_concurrent.value()} concurrent)")
         self.oob_output_text.append(f"[INFO] Username: {username}")
         self.oob_output_text.append("-" * 50)
 
         # Process devices concurrently
-        max_concurrent = 5
+        max_concurrent = self.oob_max_concurrent.value()
         semaphore = asyncio.Semaphore(max_concurrent)
         completed = 0
 
