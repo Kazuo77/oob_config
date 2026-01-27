@@ -103,7 +103,7 @@ class SSHManagerUI(QMainWindow):
 
         self.oob_output_text = QTextEdit()
         self.oob_output_text.setReadOnly(True)
-        self.oob_output_text.setFont(QFont("Consolas", 9))
+        self.oob_output_text.setFont(QFont("Courier New", 10))
         oob_output_layout.addWidget(self.oob_output_text)
 
         layout.addWidget(oob_output_group)
@@ -290,9 +290,6 @@ class SSHManagerUI(QMainWindow):
 
         # Load devices button
         load_btn = QPushButton("Load Devices")
-        print(f"Button type: {type(load_btn)}")
-        print(f"Has clicked attribute: {hasattr(load_btn, 'clicked')}")
-        print(f"Clicked type: {type(load_btn.clicked) if hasattr(load_btn, 'clicked') else 'No clicked'}")
         load_btn.clicked.connect(self.load_devices)
         layout.addWidget(load_btn)
 
@@ -341,7 +338,7 @@ class SSHManagerUI(QMainWindow):
 
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
-        self.output_text.setFont(QFont("Consolas", 9))
+        self.output_text.setFont(QFont("Courier New", 10))
         output_layout.addWidget(self.output_text)
 
         layout.addWidget(output_group)
@@ -373,7 +370,7 @@ class SSHManagerUI(QMainWindow):
 
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
-        self.results_text.setFont(QFont("Consolas", 9))
+        self.results_text.setFont(QFont("Courier New", 10))
         results_layout.addWidget(self.results_text)
 
         # Export button
@@ -404,7 +401,6 @@ class SSHManagerUI(QMainWindow):
 
     def load_devices(self):
         """Load devices from the selected file"""
-        print('load_device_function')
         file_path = self.file_path_edit.text()
         if not file_path:
             self.status_label.setText("Please select a device file first")
@@ -412,28 +408,24 @@ class SSHManagerUI(QMainWindow):
 
         try:
             # Load the file
-            print('loading file')
-            # Fix: .endswith() takes a tuple for multiple extensions
             if file_path.endswith(('.csv', '.txt')):
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_csv(file_path, delimiter='\t')  # Assume tab-delimited
 
-            # Clean data - Fix: you're reading the file twice, only need once
-            df = trim(df)  # Use the df you already loaded above
+            # Clean data
+            df = trim(df)
             df.columns = df.columns.str.strip()
 
             # Convert to device list
-            print('working on host column')
             host_column = self.host_column_edit.text()
             if host_column not in df.columns:
                 self.status_label.setText(f"Column '{host_column}' not found in file")
                 return
 
             self.devices = []
-            # Fix: syntax errors in the loop
-            for _, row in df.iterrows():  # underscore, not asterisk
-                host = row[host_column]  # underscore, not asterisk
+            for _, row in df.iterrows():
+                host = row[host_column]
                 variables = row.drop(host_column).to_dict()
                 self.devices.append({
                     'host': host,
@@ -449,7 +441,6 @@ class SSHManagerUI(QMainWindow):
 
         except Exception as e:
             self.status_label.setText(f"Error loading file: {str(e)}")
-            print(f"Error: {e}")  # This will help you see what went wrong
 
     @qasync.asyncSlot()
     async def start_execution(self):
