@@ -104,6 +104,123 @@ def trim(dataset):
     return dataset.map(trim)
 
 
+async def async_oob_init(host, new_username, new_password, timeout=10):
+    """
+    Async Out-of-Box initialization for Crestron devices.
+    Connects with default credentials and sets up new admin account.
+
+    Args:
+        host: IP address of the device
+        new_username: Username for the new admin account
+        new_password: Password for the new admin account
+        timeout: Maximum time to wait for prompts (default 10 seconds)
+
+    Returns:
+        dict with 'host', 'success', and 'message' keys
+    """
+    def_username = 'crestron'
+    def_password = ''
+
+    try:
+        async with asyncssh.connect(
+            host,
+            username=def_username,
+            password=def_password,
+            known_hosts=None
+        ) as conn:
+            # Open interactive session with PTY
+            async with conn.create_process(
+                term_type='xterm',
+                term_size=(80, 24)
+            ) as process:
+
+                buffer = ''
+                start_time = asyncio.get_event_loop().time()
+
+                while (asyncio.get_event_loop().time() - start_time) < timeout:
+                    try:
+                        # Read with short timeout to allow checking for prompts
+                        data = await asyncio.wait_for(
+                            process.stdout.read(4096),
+                            timeout=1.0
+                        )
+                        if data:
+                            buffer += data
+                            print(data, end='', flush=True)
+
+                            # Send newline to trigger prompts
+                            process.stdin.write('\n')
+
+                            # Check for password creation prompt
+                            if 'Please create a new password:' in buffer:
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                buffer = ''
+
+                            # Check for admin account creation prompt
+                            if 'Please create a local administrator account' in buffer:
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_username}\n')
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                await asyncio.sleep(0.5)
+                                process.stdin.write(f'{new_password}\n')
+                                buffer = ''
+
+                            # Check for success message
+                            if 'An administrator account was successfully created' in buffer:
+                                return {
+                                    'host': host,
+                                    'success': True,
+                                    'message': 'Administrator account created successfully'
+                                }
+
+                    except asyncio.TimeoutError:
+                        # No data available, continue waiting
+                        continue
+
+                return {
+                    'host': host,
+                    'success': False,
+                    'message': 'Timeout waiting for device prompts'
+                }
+
+    except Exception as e:
+        return {
+            'host': host,
+            'success': False,
+            'message': f'Connection failed: {str(e)}'
+        }
+
+
+async def run_oob_init_batch(devices, new_username, new_password, max_concurrent=5):
+    """
+    Run OOB initialization on multiple devices concurrently.
+
+    Args:
+        devices: List of device dicts with 'host' key
+        new_username: Username for new admin accounts
+        new_password: Password for new admin accounts
+        max_concurrent: Maximum concurrent connections
+
+    Returns:
+        List of result dicts
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def init_with_semaphore(device):
+        async with semaphore:
+            host = device['host'] if isinstance(device, dict) else device
+            return await async_oob_init(host, new_username, new_password)
+
+    tasks = [init_with_semaphore(device) for device in devices]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    return results
+
+
 async def main():
     # Load your CSV with pandas
     df = pd.read_csv('devices.txt')

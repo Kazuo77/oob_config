@@ -10,6 +10,7 @@ from PyQt5.QtCore import pyqtSignal, Qt, QObject
 from PyQt5.QtGui import QFont, QTextCursor
 import qasync
 from sshoperations import run_commands_with_variables
+from oob_init_asyncssh import async_oob_init, run_oob_init_batch
 
 def trim(dataset):
     return dataset.map(lambda x: x.strip() if isinstance(x, str) else x)
@@ -55,6 +56,10 @@ class SSHManagerUI(QMainWindow):
         tab_widget = QTabWidget()
         main_layout.addWidget(tab_widget)
 
+        # OOB Config Tab (before Configuration)
+        oob_tab = self.create_oob_config_tab()
+        tab_widget.addTab(oob_tab, "OOB Config")
+
         # Configuration Tab
         config_tab = self.create_config_tab()
         tab_widget.addTab(config_tab, "Configuration")
@@ -66,6 +71,109 @@ class SSHManagerUI(QMainWindow):
         # Results Tab
         results_tab = self.create_results_tab()
         tab_widget.addTab(results_tab, "Results")
+
+    def create_oob_config_tab(self):
+        """Create the OOB (Out-of-Box) configuration tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # OOB Credentials Section
+        oob_cred_group = QGroupBox("OOB Initial Credentials")
+        oob_cred_layout = QFormLayout(oob_cred_group)
+
+        self.oob_username_edit = QLineEdit("admin")
+        self.oob_password_edit = QLineEdit()
+        self.oob_password_edit.setEchoMode(QLineEdit.Password)
+        self.oob_password_edit.setPlaceholderText("Enter password for new admin account")
+
+        oob_cred_layout.addRow("Username:", self.oob_username_edit)
+        oob_cred_layout.addRow("Password:", self.oob_password_edit)
+
+        layout.addWidget(oob_cred_group)
+
+        # Init Button
+        self.oob_init_btn = QPushButton("Init")
+        self.oob_init_btn.setMinimumHeight(40)
+        self.oob_init_btn.clicked.connect(self.start_oob_init)
+        layout.addWidget(self.oob_init_btn)
+
+        # OOB Status/Output
+        oob_output_group = QGroupBox("OOB Init Output")
+        oob_output_layout = QVBoxLayout(oob_output_group)
+
+        self.oob_output_text = QTextEdit()
+        self.oob_output_text.setReadOnly(True)
+        self.oob_output_text.setFont(QFont("Consolas", 9))
+        oob_output_layout.addWidget(self.oob_output_text)
+
+        layout.addWidget(oob_output_group)
+
+        # OOB Progress
+        self.oob_progress_bar = QProgressBar()
+        layout.addWidget(self.oob_progress_bar)
+
+        self.oob_status_label = QLabel("Ready - Load devices in Configuration tab first")
+        layout.addWidget(self.oob_status_label)
+
+        layout.addStretch()
+        return widget
+
+    @qasync.asyncSlot()
+    async def start_oob_init(self):
+        """Start the OOB initialization process"""
+        if not self.devices:
+            self.oob_status_label.setText("No devices loaded - Load devices in Configuration tab first")
+            return
+
+        username = self.oob_username_edit.text()
+        password = self.oob_password_edit.text()
+
+        if not username or not password:
+            self.oob_status_label.setText("Please enter both username and password")
+            return
+
+        # Setup UI for execution
+        self.oob_init_btn.setEnabled(False)
+        self.oob_output_text.clear()
+        self.oob_progress_bar.setMaximum(len(self.devices))
+        self.oob_progress_bar.setValue(0)
+        self.oob_status_label.setText("Starting OOB initialization...")
+
+        self.oob_output_text.append(f"[INFO] Starting OOB init for {len(self.devices)} device(s)")
+        self.oob_output_text.append(f"[INFO] Username: {username}")
+        self.oob_output_text.append("-" * 50)
+
+        # Process each device
+        successful = 0
+        failed = 0
+
+        for i, device in enumerate(self.devices):
+            host = device['host']
+            self.oob_output_text.append(f"\n[STARTED] {host}")
+            self.oob_status_label.setText(f"Initializing {host}...")
+
+            try:
+                result = await async_oob_init(host, username, password)
+
+                if result['success']:
+                    self.oob_output_text.append(f"[SUCCESS] {host}: {result['message']}")
+                    successful += 1
+                else:
+                    self.oob_output_text.append(f"[FAILED] {host}: {result['message']}")
+                    failed += 1
+
+            except Exception as e:
+                self.oob_output_text.append(f"[ERROR] {host}: {str(e)}")
+                failed += 1
+
+            self.oob_progress_bar.setValue(i + 1)
+            self.oob_output_text.moveCursor(QTextCursor.End)
+
+        # Final summary
+        self.oob_output_text.append("\n" + "=" * 50)
+        self.oob_output_text.append(f"[COMPLETE] Successful: {successful}, Failed: {failed}")
+        self.oob_status_label.setText(f"OOB Init Complete - Success: {successful}, Failed: {failed}")
+        self.oob_init_btn.setEnabled(True)
 
     def create_config_tab(self):
         """Create the configuration tab"""
