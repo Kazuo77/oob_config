@@ -3,7 +3,6 @@ import asyncssh
 import time
 import pandas as pd
 import sys
-from tkinter import filedialog
 
 from sftptransfer import sftp_transfer
 
@@ -15,9 +14,9 @@ pd.set_option('display.max_columns', 3000)
 
 
 MyDevice = []
-file_path = filedialog.askopenfilename()
-firmware_path = filedialog.askopenfilename()
-program_path = filedialog.askopenfilename()
+file_path = None
+firmware_path = None
+program_path = None
 # file_path = ('devices.txt')
 
 def pandas_to_device_list(df, host_column='host'):
