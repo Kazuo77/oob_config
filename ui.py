@@ -77,6 +77,34 @@ class SSHManagerUI(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
+        # Device file selection
+        oob_file_group = QGroupBox("Device File")
+        oob_file_layout = QFormLayout(oob_file_group)
+
+        self.oob_file_path_edit = QLineEdit()
+        self.oob_file_path_edit.setPlaceholderText("Select devices.txt or CSV file...")
+        oob_file_browse_btn = QPushButton("Browse")
+        oob_file_browse_btn.clicked.connect(self.browse_oob_device_file)
+
+        oob_file_row = QHBoxLayout()
+        oob_file_row.addWidget(self.oob_file_path_edit)
+        oob_file_row.addWidget(oob_file_browse_btn)
+        oob_file_layout.addRow("Device File:", oob_file_row)
+
+        # Host column
+        self.oob_host_column_edit = QLineEdit("IP Address")
+        oob_file_layout.addRow("Host Column:", self.oob_host_column_edit)
+
+        layout.addWidget(oob_file_group)
+
+        # Load devices button and count
+        oob_load_btn = QPushButton("Load Devices")
+        oob_load_btn.clicked.connect(self.load_oob_devices)
+        layout.addWidget(oob_load_btn)
+
+        self.oob_device_count_label = QLabel("No devices loaded")
+        layout.addWidget(self.oob_device_count_label)
+
         # OOB Credentials Section
         oob_cred_group = QGroupBox("OOB Initial Credentials")
         oob_cred_layout = QFormLayout(oob_cred_group)
@@ -112,17 +140,67 @@ class SSHManagerUI(QMainWindow):
         self.oob_progress_bar = QProgressBar()
         layout.addWidget(self.oob_progress_bar)
 
-        self.oob_status_label = QLabel("Ready - Load devices in Configuration tab first")
+        self.oob_status_label = QLabel("Ready")
         layout.addWidget(self.oob_status_label)
 
         layout.addStretch()
         return widget
 
+    def browse_oob_device_file(self):
+        """Open file dialog to select device file for OOB tab"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Device File", "",
+            "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
+        )
+        if file_path:
+            self.oob_file_path_edit.setText(file_path)
+
+    def load_oob_devices(self):
+        """Load devices from the selected file for OOB tab"""
+        file_path = self.oob_file_path_edit.text()
+        if not file_path:
+            self.oob_status_label.setText("Please select a device file first")
+            return
+
+        try:
+            # Load the file
+            if file_path.endswith(('.csv', '.txt')):
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_csv(file_path, delimiter='\t')
+
+            # Clean data
+            df = trim(df)
+            df.columns = df.columns.str.strip()
+
+            # Convert to device list
+            host_column = self.oob_host_column_edit.text()
+            if host_column not in df.columns:
+                self.oob_status_label.setText(f"Column '{host_column}' not found in file")
+                return
+
+            self.devices = []
+            for _, row in df.iterrows():
+                host = row[host_column]
+                variables = row.drop(host_column).to_dict()
+                self.devices.append({
+                    'host': host,
+                    'variables': variables
+                })
+
+            # Update UI
+            count = len(self.devices)
+            self.oob_device_count_label.setText(f"Loaded {count} devices")
+            self.oob_status_label.setText(f"Successfully loaded {count} devices")
+
+        except Exception as e:
+            self.oob_status_label.setText(f"Error loading file: {str(e)}")
+
     @qasync.asyncSlot()
     async def start_oob_init(self):
         """Start the OOB initialization process"""
         if not self.devices:
-            self.oob_status_label.setText("No devices loaded - Load devices in Configuration tab first")
+            self.oob_status_label.setText("No devices loaded - Please load a device file first")
             return
 
         username = self.oob_username_edit.text()
