@@ -270,4 +270,5 @@ async def main():
             print(f"{result['host']} - Connection failed: {result['error']}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
