@@ -217,41 +217,52 @@ class SSHManagerUI(QMainWindow):
         self.oob_progress_bar.setValue(0)
         self.oob_status_label.setText("Starting OOB initialization...")
 
-        self.oob_output_text.append(f"[INFO] Starting OOB init for {len(self.devices)} device(s)")
+        self.oob_output_text.append(f"[INFO] Starting OOB init for {len(self.devices)} device(s) concurrently")
         self.oob_output_text.append(f"[INFO] Username: {username}")
         self.oob_output_text.append("-" * 50)
 
-        # Process each device
+        # Process devices concurrently
+        max_concurrent = 5
+        semaphore = asyncio.Semaphore(max_concurrent)
+        completed = 0
+
+        async def init_device(device):
+            nonlocal completed
+            host = device['host']
+            async with semaphore:
+                self.oob_output_text.append(f"[STARTED] {host}")
+                self.oob_output_text.moveCursor(QTextCursor.End)
+                try:
+                    result = await async_oob_init(host, username, password)
+                    completed += 1
+                    self.oob_progress_bar.setValue(completed)
+                    return result
+                except Exception as e:
+                    completed += 1
+                    self.oob_progress_bar.setValue(completed)
+                    return {'host': host, 'success': False, 'message': str(e)}
+
+        # Run all devices concurrently
+        tasks = [init_device(device) for device in self.devices]
+        results = await asyncio.gather(*tasks)
+
+        # Process results
         successful = 0
         failed = 0
-
-        for i, device in enumerate(self.devices):
-            host = device['host']
-            self.oob_output_text.append(f"\n[STARTED] {host}")
-            self.oob_status_label.setText(f"Initializing {host}...")
-
-            try:
-                result = await async_oob_init(host, username, password)
-
-                if result['success']:
-                    self.oob_output_text.append(f"[SUCCESS] {host}: {result['message']}")
-                    successful += 1
-                else:
-                    self.oob_output_text.append(f"[FAILED] {host}: {result['message']}")
-                    failed += 1
-
-            except Exception as e:
-                self.oob_output_text.append(f"[ERROR] {host}: {str(e)}")
+        for result in results:
+            if result['success']:
+                self.oob_output_text.append(f"[SUCCESS] {result['host']}: {result['message']}")
+                successful += 1
+            else:
+                self.oob_output_text.append(f"[FAILED] {result['host']}: {result['message']}")
                 failed += 1
-
-            self.oob_progress_bar.setValue(i + 1)
-            self.oob_output_text.moveCursor(QTextCursor.End)
 
         # Final summary
         self.oob_output_text.append("\n" + "=" * 50)
         self.oob_output_text.append(f"[COMPLETE] Successful: {successful}, Failed: {failed}")
         self.oob_status_label.setText(f"OOB Init Complete - Success: {successful}, Failed: {failed}")
         self.oob_init_btn.setEnabled(True)
+        self.oob_output_text.moveCursor(QTextCursor.End)
 
     def create_config_tab(self):
         """Create the configuration tab"""
