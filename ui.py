@@ -502,13 +502,14 @@ class SSHManagerUI(QMainWindow):
 Wrap the column name in curly braces <b>{}</b>.</p>
 
 <h4>Example CSV columns:</h4>
-<pre>IP Address, NewIP Address, Subnet Mask, Gateway, Hostname</pre>
+<pre>IP Address, NewIP Address, Subnet Mask, Gateway, DNS, Hostname</pre>
 
 <h4>Example commands:</h4>
 <pre>
 ipa 0 {NewIP Address}
 ipm 0 {Subnet Mask}
 defgw 0 {Gateway}
+addd 0 {DNS}
 hostname {Hostname}
 </pre>
 
@@ -517,10 +518,16 @@ hostname {Hostname}
 <ul>
 <li>NewIP Address = 192.168.1.100</li>
 <li>Subnet Mask = 255.255.255.0</li>
+<li>DNS = 8.8.8.8</li>
 </ul>
 <p>The command <code>ipa 0 {NewIP Address}</code> becomes <code>ipa 0 192.168.1.100</code></p>
 
-<p><b>Note:</b> Column names are case-sensitive and must match exactly.</p>
+<h4>Adding Custom Columns:</h4>
+<p>You can add any columns to your CSV file (DNS, VLAN, Room Number, etc.)
+and use them as placeholders. Just add the column to your CSV and reference it
+with <code>{Column Name}</code> in your commands.</p>
+
+<p><b>Note:</b> Column names are case-sensitive and must match exactly (including spaces).</p>
 """
         QMessageBox.information(self, "Placeholder Help", info_text)
 
