@@ -4,7 +4,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QPushButton, QTextEdit, QLineEdit, QLabel,
                              QFileDialog, QProgressBar, QTabWidget, QFormLayout,
-                             QCheckBox, QSpinBox, QGroupBox, QSplitter
+                             QCheckBox, QSpinBox, QGroupBox, QSplitter, QMessageBox
                              )
 from PyQt5.QtCore import pyqtSignal, Qt, QObject
 from PyQt5.QtGui import QFont, QTextCursor
@@ -312,9 +312,19 @@ class SSHManagerUI(QMainWindow):
         cmd_group = QGroupBox("Commands to Execute")
         cmd_layout = QVBoxLayout(cmd_group)
 
+        # Info button row
+        cmd_header = QHBoxLayout()
+        cmd_info_btn = QPushButton("?")
+        cmd_info_btn.setFixedSize(25, 25)
+        cmd_info_btn.clicked.connect(self.show_placeholder_info)
+        cmd_header.addStretch()
+        cmd_header.addWidget(QLabel("Use placeholders from CSV columns"))
+        cmd_header.addWidget(cmd_info_btn)
+        cmd_layout.addLayout(cmd_header)
+
         self.commands_edit = QTextEdit()
         self.commands_edit.setPlaceholderText(
-            "Enter commands, one per line:\nversion\necho {NewIP Address}\nshow ip interface brief")
+            "Enter commands, one per line:\nversion\nipa 0 {NewIP Address}\nipm 0 {Subnet Mask}")
         self.commands_edit.setMaximumHeight(150)
         cmd_layout.addWidget(self.commands_edit)
 
@@ -485,6 +495,42 @@ class SSHManagerUI(QMainWindow):
         if file_path:
             line_edit.setText(file_path)
 
+    def show_placeholder_info(self):
+        """Show information about using placeholders in commands"""
+        info_text = """<h3>Using Placeholders in Commands</h3>
+<p>You can use column names from your CSV file as placeholders in commands.
+Wrap the column name in curly braces <b>{}</b>.</p>
+
+<h4>Example CSV columns:</h4>
+<pre>IP Address, NewIP Address, Subnet Mask, Gateway, DNS, Hostname</pre>
+
+<h4>Example commands:</h4>
+<pre>
+ipa 0 {NewIP Address}
+ipm 0 {Subnet Mask}
+defgw 0 {Gateway}
+addd 0 {DNS}
+hostname {Hostname}
+</pre>
+
+<h4>How it works:</h4>
+<p>Each device will substitute its own values from the CSV. For example, if a device has:</p>
+<ul>
+<li>NewIP Address = 192.168.1.100</li>
+<li>Subnet Mask = 255.255.255.0</li>
+<li>DNS = 8.8.8.8</li>
+</ul>
+<p>The command <code>ipa 0 {NewIP Address}</code> becomes <code>ipa 0 192.168.1.100</code></p>
+
+<h4>Adding Custom Columns:</h4>
+<p>You can add any columns to your CSV file (DNS, DHCP, Timezone, AutoBrightness, etc.)
+and use them as placeholders. Just add the column to your CSV and reference it
+with <code>{Column Name}</code> in your commands.</p>
+
+<p><b>Note:</b> Column names are case-sensitive and must match exactly (including spaces).</p>
+"""
+        QMessageBox.information(self, "Placeholder Help", info_text)
+
     def browse_device_file(self):
         """Open file dialog to select device file"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -612,7 +658,7 @@ class SSHManagerUI(QMainWindow):
 
     async def process_device(self, device_info, commands, username, password,
                              firmware_config, program_config):
-        """Process a single device - replace this with your actual SSH function"""
+        """Process a single device with SSH commands"""
         hostname = device_info['host']
         variables = device_info.get('variables', {})
 
@@ -620,40 +666,30 @@ class SSHManagerUI(QMainWindow):
             self.signals.device_started.emit(hostname)
             self.signals.progress_update.emit(f"Connecting to {hostname}...")
 
-            # This is where you'd call your actual function:
-            result = await run_commands_with_variables(device_info, commands, username, password)
+            # Get firmware/program paths if enabled
+            firmware_path = firmware_config.get('local_file') if firmware_config.get('enabled') else None
+            program_path = program_config.get('local_file') if program_config.get('enabled') else None
 
-            # Simulate for now
-            await asyncio.sleep(1)  # Simulate connection
+            # Run actual SSH commands
+            result = await run_commands_with_variables(
+                device_info, commands, username, password,
+                firmware_path=firmware_path, program_path=program_path
+            )
 
-            # Process each command template with variables
-            for command_template in commands:
-                # Format command with device-specific variables (same as your existing code)
-                try:
-                    formatted_command = command_template.format(**variables)
-                except KeyError as e:
-                    # Handle missing variables gracefully
-                    formatted_command = command_template
-                    self.signals.progress_update.emit(f"Warning: Variable {e} not found for {hostname}")
-
-                self.signals.progress_update.emit(f"Running '{formatted_command}' on {hostname}")
-                await asyncio.sleep(0.5)  # Simulate command execution
-
-                # Simulate command output
-                output = f"Simulated output from '{formatted_command}' on {hostname}"
-                self.signals.command_output.emit(hostname, formatted_command, output)
-
-            # Simulate file transfers
-            if firmware_config.get('enabled'):
-                self.signals.progress_update.emit(f"Transferring firmware to {hostname}...")
-                await asyncio.sleep(2)  # Simulate transfer
-
-            if program_config.get('enabled'):
-                self.signals.progress_update.emit(f"Transferring program to {hostname}...")
-                await asyncio.sleep(2)  # Simulate transfer
-
-            self.signals.device_completed.emit(hostname, True)
-            return {'host': hostname, 'success': True}
+            if result['success']:
+                # Output command results
+                for cmd_result in result.get('results', []):
+                    self.signals.command_output.emit(
+                        hostname,
+                        cmd_result['command'],
+                        cmd_result['stdout'] or cmd_result['stderr'] or 'No output'
+                    )
+                self.signals.device_completed.emit(hostname, True)
+                return {'host': hostname, 'success': True}
+            else:
+                self.signals.progress_update.emit(f"Error on {hostname}: {result.get('error', 'Unknown error')}")
+                self.signals.device_completed.emit(hostname, False)
+                return {'host': hostname, 'success': False, 'error': result.get('error')}
 
         except Exception as e:
             self.signals.device_completed.emit(hostname, False)
