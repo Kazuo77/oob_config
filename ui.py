@@ -523,7 +523,7 @@ hostname {Hostname}
 <p>The command <code>ipa 0 {NewIP Address}</code> becomes <code>ipa 0 192.168.1.100</code></p>
 
 <h4>Adding Custom Columns:</h4>
-<p>You can add any columns to your CSV file (DNS, VLAN, Room Number, etc.)
+<p>You can add any columns to your CSV file (DNS, DHCP, Timezone, AutoBrightness, etc.)
 and use them as placeholders. Just add the column to your CSV and reference it
 with <code>{Column Name}</code> in your commands.</p>
 
