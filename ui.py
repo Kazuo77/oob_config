@@ -4,7 +4,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
                              QWidget, QPushButton, QTextEdit, QLineEdit, QLabel,
                              QFileDialog, QProgressBar, QTabWidget, QFormLayout,
-                             QCheckBox, QSpinBox, QGroupBox, QSplitter
+                             QCheckBox, QSpinBox, QGroupBox, QSplitter, QMessageBox
                              )
 from PyQt5.QtCore import pyqtSignal, Qt, QObject
 from PyQt5.QtGui import QFont, QTextCursor
@@ -312,9 +312,19 @@ class SSHManagerUI(QMainWindow):
         cmd_group = QGroupBox("Commands to Execute")
         cmd_layout = QVBoxLayout(cmd_group)
 
+        # Info button row
+        cmd_header = QHBoxLayout()
+        cmd_info_btn = QPushButton("?")
+        cmd_info_btn.setFixedSize(25, 25)
+        cmd_info_btn.clicked.connect(self.show_placeholder_info)
+        cmd_header.addStretch()
+        cmd_header.addWidget(QLabel("Use placeholders from CSV columns"))
+        cmd_header.addWidget(cmd_info_btn)
+        cmd_layout.addLayout(cmd_header)
+
         self.commands_edit = QTextEdit()
         self.commands_edit.setPlaceholderText(
-            "Enter commands, one per line:\nversion\necho {NewIP Address}\nshow ip interface brief")
+            "Enter commands, one per line:\nversion\nipa 0 {NewIP Address}\nipm 0 {Subnet Mask}")
         self.commands_edit.setMaximumHeight(150)
         cmd_layout.addWidget(self.commands_edit)
 
@@ -484,6 +494,35 @@ class SSHManagerUI(QMainWindow):
         )
         if file_path:
             line_edit.setText(file_path)
+
+    def show_placeholder_info(self):
+        """Show information about using placeholders in commands"""
+        info_text = """<h3>Using Placeholders in Commands</h3>
+<p>You can use column names from your CSV file as placeholders in commands.
+Wrap the column name in curly braces <b>{}</b>.</p>
+
+<h4>Example CSV columns:</h4>
+<pre>IP Address, NewIP Address, Subnet Mask, Gateway, Hostname</pre>
+
+<h4>Example commands:</h4>
+<pre>
+ipa 0 {NewIP Address}
+ipm 0 {Subnet Mask}
+defgw 0 {Gateway}
+hostname {Hostname}
+</pre>
+
+<h4>How it works:</h4>
+<p>Each device will substitute its own values from the CSV. For example, if a device has:</p>
+<ul>
+<li>NewIP Address = 192.168.1.100</li>
+<li>Subnet Mask = 255.255.255.0</li>
+</ul>
+<p>The command <code>ipa 0 {NewIP Address}</code> becomes <code>ipa 0 192.168.1.100</code></p>
+
+<p><b>Note:</b> Column names are case-sensitive and must match exactly.</p>
+"""
+        QMessageBox.information(self, "Placeholder Help", info_text)
 
     def browse_device_file(self):
         """Open file dialog to select device file"""
