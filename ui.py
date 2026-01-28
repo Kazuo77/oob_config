@@ -498,6 +498,7 @@ class SSHManagerUI(QMainWindow):
     def show_placeholder_info(self):
         """Show information about using placeholders in commands"""
         info_text = """<h3>Using Placeholders in Commands</h3>
+<p>The CSV can be created from scratch or you can export it from crestron toolbox<p>
 <p>You can use column names from your CSV file as placeholders in commands.
 Wrap the column name in curly braces <b>{}</b>.</p>
 
